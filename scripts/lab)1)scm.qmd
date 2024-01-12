@@ -1,0 +1,105 @@
+---
+title: "Lab 1 Quarto"
+author: "Samantha"
+format: 
+  html:
+    code-fold: true
+    toc: true
+execute: 
+  echo: true
+  message: false
+  warning: false
+editor: visual
+---
+
+```{r setup}
+library(tidyverse)
+library(here)
+library(sf)
+library(tmap)
+library(janitor)
+library(ggplot2)
+```
+
+```{r load data}
+sfo_trees_df <- read_csv(here('data','sfo_trees','sfo_trees.csv')) %>%
+  clean_names()
+```
+
+# Part 1: Data exploration and wrangling review
+
+## Example 1:
+
+find counts of observations by legal_status, then select the statuses with the five highest tree counts
+
+```{r example 1}
+sfo_trees_df %>% 
+  group_by(legal_status) %>%
+  summarize(tree_count = n())
+top_5_status <- sfo_trees_df %>%
+  filter(!is.na(legal_status)) %>%
+  group_by(legal_status) %>%
+  summarize(tree_count = n()) %>%
+  ungroup() %>%
+  slice_max(tree_count, n=5)
+```
+
+
+Make a ggplot of the top 5 observations from above:
+
+```{r ggplot of the top 5 observations from above}
+trees_plot <- ggplot(top_5_status, aes(x= fct_reorder(legal_status, -tree_count), y=tree_count, fill=tree_count))+
+  geom_col()+
+  theme_minimal()+
+  labs(x= "Legal Status", y= "Count", 
+       title="Top 5 Legal Status Tree Counts")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+trees_plot
+
+ggsave(here("plots", "Top 5 Legal Status Tree Counts.jpg"), trees_plot, width=6,
+       height=8, units="in", dpi=800)
+```
+
+
+## Example 2
+Only keep observations where legal status is "Permitted Site" and caretaker is "MTA" or "DPW Store as "permitted_mta_dpw
+
+```{r Example 2}
+permitted_mta_dpw <- sfo_trees_df %>%
+  filter(legal_status %in% 'Permitted Site' & caretaker %in% c('MTA', 'DPW'))
+```
+
+## Example 3
+only keep observations of oak and pine trees then only keep columns "species", "legal_status", "plant_date", and "latitude" and "longitude"
+
+```{r Example 3}
+oak_pine_df <- sfo_trees_df %>%
+  filter(str_detect(species, "Oak") | str_detect(species, "Pine"))%>%
+  select(legal_status, species, plant_date, latitude, longitude) %>%
+  mutate(type = ifelse(str_detect(species, 'Oak'), 'oak', 'pine'))
+```
+
+```{r graph}
+ggplot(data = oak_pine_df, aes(x= longitude, y= latitude, color = type))+
+  geom_point()+
+  theme_minimal()+
+  theme(axis.title= element_blank())+
+  labs(color='Tree Type', caption = 'Location of Oak Trees')
+```
+
+How can we compare the CA native species to those in our sf trees database? Add a column noting whether a tree is native or not. We need the common and scientific names separated
+```{r}
+sfo_trees_native <- sfo_trees_df %>%
+  separate(species, into = c('spp_sci', 'spp_common'), sep = '::') %>%
+  select(starts_with('spp'), 'plant_date', 'legal_status', 'longitude', 'latitude') %>%
+  mutate(ca_native = (spp_sci %in% ca_native_df$scientific_name))
+  
+  sfo_native_status <- sfo_trees_native %>%
+  group_by(legal_status, ca_native) %>%
+  summarize(n_trees = n(),
+            n_species = n_distinct(spp_sci))
+```
+
+
+
+
